@@ -15,9 +15,9 @@ use std::os::unix::io::AsRawFd;
 
 #[bench]
 fn info_rust_dwarf(b: &mut test::Bencher) {
-    let path = std::env::args_os().next().unwrap(); // Note: not constant
-    let sections = dwarf::elf::load(path).unwrap();
     b.iter(|| {
+        let path = std::env::args_os().next().unwrap(); // Note: not constant
+        let sections = dwarf::elf::load(path).unwrap();
         let mut units = sections.compilation_units();
         while let Some(unit) = units.next().unwrap() {
             let abbrev = sections.abbrev(&unit.common).unwrap();
@@ -35,9 +35,9 @@ fn info_rust_dwarf(b: &mut test::Bencher) {
 
 #[bench]
 fn info_gimli(b: &mut test::Bencher) {
-    let path = std::env::args_os().next().unwrap(); // Note: not constant
-    let sections = dwarf::elf::load(path).unwrap();
     b.iter(|| {
+        let path = std::env::args_os().next().unwrap(); // Note: not constant
+        let sections = dwarf::elf::load(path).unwrap();
         let debug_info = gimli::DebugInfo::<gimli::LittleEndian>::new(&sections.debug_info);
         let debug_abbrev = gimli::DebugAbbrev::<gimli::LittleEndian>::new(&sections.debug_abbrev);
         for unit in debug_info.units() {
@@ -73,22 +73,22 @@ const DW_DLA_LIST: libdwarf::Dwarf_Unsigned = 0x0f;
 #[cfg(feature = "libdwarf")]
 #[bench]
 fn info_libdwarf(b: &mut test::Bencher) {
-    let null = std::ptr::null_mut::<std::os::raw::c_void>();
-    let path = std::env::args_os().next().unwrap(); // Note: not constant
-    let file = std::fs::File::open(path).unwrap();
-
-    let fd = file.as_raw_fd();
-    let access = 0; // DW_DLC_READ
-    let errhand = None;
-    let errarg = null as libdwarf::Dwarf_Ptr;
-    let mut dbg = null as libdwarf::Dwarf_Debug;
-    let error = null as *mut libdwarf::Dwarf_Error;
-    let res = unsafe {
-        libdwarf::dwarf_init(fd, access, errhand, errarg, &mut dbg, error)
-    };
-    assert_eq!(res, DW_DLV_OK);
-
     b.iter(|| {
+        let null = std::ptr::null_mut::<std::os::raw::c_void>();
+        let path = std::env::args_os().next().unwrap(); // Note: not constant
+        let file = std::fs::File::open(path).unwrap();
+
+        let fd = file.as_raw_fd();
+        let access = 0; // DW_DLC_READ
+        let errhand = None;
+        let errarg = null as libdwarf::Dwarf_Ptr;
+        let mut dbg = null as libdwarf::Dwarf_Debug;
+        let error = null as *mut libdwarf::Dwarf_Error;
+        let res = unsafe {
+            libdwarf::dwarf_init(fd, access, errhand, errarg, &mut dbg, error)
+        };
+        assert_eq!(res, DW_DLV_OK);
+
         loop {
             let mut cu_header_length = 0;
             let mut version_stamp = 0;
@@ -118,12 +118,12 @@ fn info_libdwarf(b: &mut test::Bencher) {
 
             info_libdwarf_die(dbg, cu_die);
         }
-    });
 
-    let res = unsafe {
-        libdwarf::dwarf_finish(dbg, error)
-    };
-    assert_eq!(res, DW_DLV_OK);
+        let res = unsafe {
+            libdwarf::dwarf_finish(dbg, error)
+        };
+        assert_eq!(res, DW_DLV_OK);
+    });
 }
 
 #[cfg(feature = "libdwarf")]
@@ -201,16 +201,16 @@ fn info_libdwarf_attr(dbg: libdwarf::Dwarf_Debug, die: libdwarf::Dwarf_Die) {
 #[cfg(feature = "elfutils")]
 #[bench]
 fn info_elfutils(b: &mut test::Bencher) {
-    let null = std::ptr::null_mut::<std::os::raw::c_void>();
-    let path = std::env::args_os().next().unwrap(); // Note: not constant
-    let file = std::fs::File::open(path).unwrap();
-    let fd = file.as_raw_fd();
-    let dwarf = unsafe {
-        libdw::dwarf_begin(fd, libdw::Dwarf_Cmd::DWARF_C_READ)
-    };
-    assert!(dwarf != null as *mut libdw::Dwarf);
-
     b.iter(|| {
+        let null = std::ptr::null_mut::<std::os::raw::c_void>();
+        let path = std::env::args_os().next().unwrap(); // Note: not constant
+        let file = std::fs::File::open(path).unwrap();
+        let fd = file.as_raw_fd();
+        let dwarf = unsafe {
+            libdw::dwarf_begin(fd, libdw::Dwarf_Cmd::DWARF_C_READ)
+        };
+        assert!(dwarf != null as *mut libdw::Dwarf);
+
         let mut offset = 0;
         loop {
             let mut next_offset = 0;
@@ -299,9 +299,9 @@ unsafe extern "C" fn info_elfutils_attr(_: *mut libdw::Dwarf_Attribute, _: *mut 
 
 #[bench]
 fn line_rust_dwarf(b: &mut test::Bencher) {
-    let path = std::env::args_os().next().unwrap(); // Note: not constant
-    let sections = dwarf::elf::load(path).unwrap();
     b.iter(|| {
+        let path = std::env::args_os().next().unwrap(); // Note: not constant
+        let sections = dwarf::elf::load(path).unwrap();
         let mut r = &*sections.debug_line;
         let line_program = dwarf::line::LineNumberProgram::read(&mut r, 0, sections.endian, 8).unwrap();
         let mut lines = line_program.lines();
@@ -313,9 +313,9 @@ fn line_rust_dwarf(b: &mut test::Bencher) {
 
 #[bench]
 fn line_gimli(b: &mut test::Bencher) {
-    let path = std::env::args_os().next().unwrap(); // Note: not constant
-    let sections = dwarf::elf::load(path).unwrap();
     b.iter(|| {
+        let path = std::env::args_os().next().unwrap(); // Note: not constant
+        let sections = dwarf::elf::load(path).unwrap();
         let debug_line = gimli::DebugLine::<gimli::LittleEndian>::new(&sections.debug_line);
         let header = gimli::LineNumberProgramHeader::new(debug_line, gimli::DebugLineOffset(0), 8).unwrap();
         let mut state_machine = gimli::StateMachine::new(&header);
@@ -325,25 +325,25 @@ fn line_gimli(b: &mut test::Bencher) {
     });
 }
 
-#[cfg(libdwarf)]
+#[cfg(feature = "libdwarf")]
 #[bench]
 fn line_libdwarf(b: &mut test::Bencher) {
-    let null = std::ptr::null_mut::<std::os::raw::c_void>();
-    let path = std::env::args_os().next().unwrap(); // Note: not constant
-    let file = std::fs::File::open(path).unwrap();
-
-    let fd = file.as_raw_fd();
-    let access = 0; // DW_DLC_READ
-    let errhand = None;
-    let errarg = null as libdwarf::Dwarf_Ptr;
-    let mut dbg = null as libdwarf::Dwarf_Debug;
-    let error = null as *mut libdwarf::Dwarf_Error;
-    let res = unsafe {
-        libdwarf::dwarf_init(fd, access, errhand, errarg, &mut dbg, error)
-    };
-    assert_eq!(res, DW_DLV_OK);
-
     b.iter(|| {
+        let null = std::ptr::null_mut::<std::os::raw::c_void>();
+        let path = std::env::args_os().next().unwrap(); // Note: not constant
+        let file = std::fs::File::open(path).unwrap();
+
+        let fd = file.as_raw_fd();
+        let access = 0; // DW_DLC_READ
+        let errhand = None;
+        let errarg = null as libdwarf::Dwarf_Ptr;
+        let mut dbg = null as libdwarf::Dwarf_Debug;
+        let error = null as *mut libdwarf::Dwarf_Error;
+        let res = unsafe {
+            libdwarf::dwarf_init(fd, access, errhand, errarg, &mut dbg, error)
+        };
+        assert_eq!(res, DW_DLV_OK);
+
         loop {
             let mut cu_header_length = 0;
             let mut version_stamp = 0;
@@ -385,10 +385,10 @@ fn line_libdwarf(b: &mut test::Bencher) {
                 libdwarf::dwarf_srclines_dealloc(dbg, linebuf, linecount);
             }
         }
-    });
 
-    let res = unsafe {
-        libdwarf::dwarf_finish(dbg, error)
-    };
-    assert_eq!(res, DW_DLV_OK);
+        let res = unsafe {
+            libdwarf::dwarf_finish(dbg, error)
+        };
+        assert_eq!(res, DW_DLV_OK);
+    });
 }
