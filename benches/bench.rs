@@ -212,3 +212,70 @@ fn line_gimli(b: &mut test::Bencher) {
         }
     });
 }
+
+#[bench]
+fn line_libdwarf(b: &mut test::Bencher) {
+    let null = std::ptr::null_mut::<std::os::raw::c_void>();
+    let path = std::env::args_os().next().unwrap(); // Note: not constant
+    let file = std::fs::File::open(path).unwrap();
+
+    let fd = file.as_raw_fd();
+    let access = 0; // DW_DLC_READ
+    let errhand = None;
+    let errarg = null as libdwarf::Dwarf_Ptr;
+    let mut dbg = null as libdwarf::Dwarf_Debug;
+    let error = null as *mut libdwarf::Dwarf_Error;
+    let res = unsafe {
+        libdwarf::dwarf_init(fd, access, errhand, errarg, &mut dbg, error)
+    };
+    assert_eq!(res, DW_DLV_OK);
+
+    b.iter(|| {
+        loop {
+            let mut cu_header_length = 0;
+            let mut version_stamp = 0;
+            let mut abbrev_offset = 0;
+            let mut address_size = 0;
+            let mut next_cu_header_offset = 0;
+            let res = unsafe {
+                libdwarf::dwarf_next_cu_header(
+                    dbg,
+                    &mut cu_header_length,
+                    &mut version_stamp,
+                    &mut abbrev_offset,
+                    &mut address_size,
+                    &mut next_cu_header_offset,
+                    error)
+            };
+            if res == DW_DLV_NO_ENTRY {
+                break;
+            }
+            assert_eq!(res, DW_DLV_OK);
+
+            let mut cu_die = null as libdwarf::Dwarf_Die;
+            let res = unsafe {
+                libdwarf::dwarf_siblingof(dbg, null as libdwarf::Dwarf_Die, &mut cu_die, error)
+            };
+            assert_eq!(res, DW_DLV_OK);
+
+            let mut linebuf = null as *mut libdwarf::Dwarf_Line;
+            let mut linecount = 0;
+            let res = unsafe {
+                libdwarf::dwarf_srclines(cu_die, &mut linebuf, &mut linecount, error)
+            };
+            if res == DW_DLV_NO_ENTRY {
+                continue;
+            }
+            assert_eq!(res, DW_DLV_OK);
+
+            unsafe {
+                libdwarf::dwarf_srclines_dealloc(dbg, linebuf, linecount);
+            }
+        }
+    });
+
+    let res = unsafe {
+        libdwarf::dwarf_finish(dbg, error)
+    };
+    assert_eq!(res, DW_DLV_OK);
+}
