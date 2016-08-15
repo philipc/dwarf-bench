@@ -1,0 +1,17 @@
+[package]
+name = "dwarf-bench"
+version = "0.0.1"
+authors = ["Philip Craig <philipjcraig@gmail.com>"]
+description = "Benchmark rust DWARF libraries"
+keywords = ["DWARF", "ELF"]
+license = "MIT/Apache-2.0"
+
+[dev-dependencies]
+dwarf = "0.0.3"
+gimli = "0.5.0"
+
+[features]
+clippy = []
+
+[profile.bench]
+debug = true
