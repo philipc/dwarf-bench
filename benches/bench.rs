@@ -4,7 +4,12 @@ extern crate test;
 extern crate dwarf;
 extern crate gimli;
 extern crate dwarf_bench;
+
+#[cfg(feature = "libdwarf")]
 use dwarf_bench::libdwarf;
+
+#[cfg(feature = "elfutils")]
+use dwarf_bench::libdw;
 
 use std::os::unix::io::AsRawFd;
 
@@ -52,14 +57,20 @@ fn info_gimli(b: &mut test::Bencher) {
     });
 }
 
+#[cfg(feature = "libdwarf")]
 const DW_DLV_NO_ENTRY: std::os::raw::c_int = -1;
+#[cfg(feature = "libdwarf")]
 const DW_DLV_OK: std::os::raw::c_int = 0;
 //const DW_DLV_ERROR: std::os::raw::c_int = 1;
 
+#[cfg(feature = "libdwarf")]
 const DW_DLA_DIE: libdwarf::Dwarf_Unsigned = 0x08;
+#[cfg(feature = "libdwarf")]
 const DW_DLA_ATTR: libdwarf::Dwarf_Unsigned = 0x0a;
+#[cfg(feature = "libdwarf")]
 const DW_DLA_LIST: libdwarf::Dwarf_Unsigned = 0x0f;
 
+#[cfg(feature = "libdwarf")]
 #[bench]
 fn info_libdwarf(b: &mut test::Bencher) {
     let null = std::ptr::null_mut::<std::os::raw::c_void>();
@@ -115,6 +126,7 @@ fn info_libdwarf(b: &mut test::Bencher) {
     assert_eq!(res, DW_DLV_OK);
 }
 
+#[cfg(feature = "libdwarf")]
 fn info_libdwarf_die(dbg: libdwarf::Dwarf_Debug, in_die: libdwarf::Dwarf_Die) {
     let null = std::ptr::null_mut::<std::os::raw::c_void>();
     let error = null as *mut libdwarf::Dwarf_Error;
@@ -154,6 +166,7 @@ fn info_libdwarf_die(dbg: libdwarf::Dwarf_Debug, in_die: libdwarf::Dwarf_Die) {
     };
 }
 
+#[cfg(feature = "libdwarf")]
 fn info_libdwarf_attr(dbg: libdwarf::Dwarf_Debug, die: libdwarf::Dwarf_Die) {
     let null = std::ptr::null_mut::<std::os::raw::c_void>();
     let error = null as *mut libdwarf::Dwarf_Error;
@@ -185,6 +198,105 @@ fn info_libdwarf_attr(dbg: libdwarf::Dwarf_Debug, die: libdwarf::Dwarf_Die) {
     };
 }
 
+#[cfg(feature = "elfutils")]
+#[bench]
+fn info_elfutils(b: &mut test::Bencher) {
+    let null = std::ptr::null_mut::<std::os::raw::c_void>();
+    let path = std::env::args_os().next().unwrap(); // Note: not constant
+    let file = std::fs::File::open(path).unwrap();
+    let fd = file.as_raw_fd();
+    let dwarf = unsafe {
+        libdw::dwarf_begin(fd, libdw::Dwarf_Cmd::DWARF_C_READ)
+    };
+    assert!(dwarf != null as *mut libdw::Dwarf);
+
+    b.iter(|| {
+        let mut offset = 0;
+        loop {
+            let mut next_offset = 0;
+            let mut header_size = 0;
+            let mut abbrev_offset = 0;
+            let mut address_size = 0;
+            let mut offset_size = 0;
+            let res = unsafe {
+                libdw::dwarf_nextcu(
+                    dwarf,
+                    offset,
+                    &mut next_offset,
+                    &mut header_size,
+                    &mut abbrev_offset,
+                    &mut address_size,
+                    &mut offset_size)
+            };
+            if res > 0 {
+                break;
+            }
+            assert_eq!(res, 0);
+
+            let offdie = offset + header_size as u64;
+            let mut stack = Vec::new();
+            let mut die;
+            unsafe {
+                die = std::mem::uninitialized();
+                let res = libdw::dwarf_offdie(dwarf, offdie, &mut die);
+                assert_eq!(res, &mut die as *mut _);
+            };
+            stack.push(die);
+
+            loop {
+                let res = unsafe {
+                    libdw::dwarf_getattrs(&mut die, Some(info_elfutils_attr), null, 0)
+                };
+                assert_eq!(res, 1);
+
+                let mut next_die;
+                let res = unsafe {
+                    next_die = std::mem::uninitialized();
+                    libdw::dwarf_child(&mut die, &mut next_die)
+                };
+                assert!(res >= 0);
+
+                if res > 0 {
+                    // No child, so read sibling
+                    loop {
+                        let res = unsafe {
+                            next_die = std::mem::uninitialized();
+                            libdw::dwarf_siblingof(&mut die, &mut next_die)
+                        };
+                        assert!(res >= 0);
+
+                        if res > 0 {
+                            // No sibling, so pop parent
+                            if stack.len() == 0 {
+                                break;
+                            }
+                            die = stack.pop().unwrap();
+                        } else {
+                            // Sibling
+                            die = next_die;
+                            break;
+                        }
+                    }
+                    if stack.len() == 0 {
+                        break;
+                    }
+                } else {
+                    // Child, so push parent
+                    stack.push(die);
+                    die = next_die;
+                }
+            }
+
+            offset = next_offset;
+        }
+    });
+}
+
+#[cfg(feature = "elfutils")]
+unsafe extern "C" fn info_elfutils_attr(_: *mut libdw::Dwarf_Attribute, _: *mut std::os::raw::c_void) -> i32{
+    0
+}
+
 #[bench]
 fn line_rust_dwarf(b: &mut test::Bencher) {
     let path = std::env::args_os().next().unwrap(); // Note: not constant
@@ -213,6 +325,7 @@ fn line_gimli(b: &mut test::Bencher) {
     });
 }
 
+#[cfg(libdwarf)]
 #[bench]
 fn line_libdwarf(b: &mut test::Bencher) {
     let null = std::ptr::null_mut::<std::os::raw::c_void>();
