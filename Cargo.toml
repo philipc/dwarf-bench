@@ -12,9 +12,9 @@ dwarf = { git = "https://github.com/philipc/rust-dwarf.git" }
 gimli = { git = "https://github.com/gimli-rs/gimli.git" }
 
 [features]
-clippy = []
-libdwarf = []
-elfutils = []
+libdwarf = [ "io" ]
+elfutils = [ "io" ]
+io = []
 
 [profile.bench]
 debug = true

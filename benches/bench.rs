@@ -13,48 +13,73 @@ use dwarf_bench::libdw;
 
 use std::os::unix::io::AsRawFd;
 
+fn test_path() -> std::ffi::OsString {
+    //std::env::args_os().next().unwrap()
+    std::env::var_os("BENCH_FILE").unwrap()
+}
+
+fn elf_load() -> dwarf::Sections<dwarf::AnyEndian> {
+    dwarf::elf::load(test_path()).unwrap()
+}
+
 #[bench]
 fn info_rust_dwarf(b: &mut test::Bencher) {
+    let sections = elf_load();
     b.iter(|| {
-        let path = std::env::args_os().next().unwrap(); // Note: not constant
-        let sections = dwarf::elf::load(path).unwrap();
-        let mut units = sections.compilation_units();
-        while let Some(unit) = units.next().unwrap() {
-            let abbrev = sections.abbrev(&unit.common).unwrap();
-            let mut entries = unit.entries(&abbrev);
-            while let Some(entry) = entries.next().unwrap() {
-                test::black_box(entry.tag);
-                for attribute in &entry.attributes {
-                    test::black_box(attribute.at);
-                    test::black_box(&attribute.data);
-                }
-            }
+        if cfg!(feature = "io") {
+            let sections = elf_load();
+            impl_info_rust_dwarf(&sections);
+        } else {
+            impl_info_rust_dwarf(&sections);
         }
     });
 }
 
-#[bench]
-fn info_gimli(b: &mut test::Bencher) {
-    b.iter(|| {
-        let path = std::env::args_os().next().unwrap(); // Note: not constant
-        let sections = dwarf::elf::load(path).unwrap();
-        let debug_info = gimli::DebugInfo::<gimli::LittleEndian>::new(&sections.debug_info);
-        let debug_abbrev = gimli::DebugAbbrev::<gimli::LittleEndian>::new(&sections.debug_abbrev);
-        let mut units = debug_info.units();
-        while let Some(unit) = units.next().unwrap() {
-            let abbrevs = unit.abbreviations(debug_abbrev).unwrap();
-            let mut cursor = unit.entries(&abbrevs);
-            while cursor.next_dfs().unwrap().is_some() {
-                let entry = cursor.current().unwrap();
-                test::black_box(entry.tag());
-                let mut attrs = entry.attrs();
-                while let Some(attr) = attrs.next().unwrap() {
-                    test::black_box(attr.name());
-                    test::black_box(attr.value());
-                }
+fn impl_info_rust_dwarf(sections: &dwarf::Sections<dwarf::AnyEndian>) {
+    let mut units = sections.compilation_units();
+    while let Some(unit) = units.next().unwrap() {
+        let abbrev = sections.abbrev(&unit.common).unwrap();
+        let mut entries = unit.entries(&abbrev);
+        while let Some(entry) = entries.next().unwrap() {
+            test::black_box(entry.tag);
+            for attribute in &entry.attributes {
+                test::black_box(attribute.at);
+                test::black_box(&attribute.data);
             }
         }
+    }
+}
+
+#[bench]
+fn info_gimli(b: &mut test::Bencher) {
+    let sections = elf_load();
+    b.iter(|| {
+        if cfg!(feature = "io") {
+            let sections = elf_load();
+            impl_info_gimli(&sections);
+        } else {
+            impl_info_gimli(&sections);
+        }
     });
+}
+
+fn impl_info_gimli(sections: &dwarf::Sections<dwarf::AnyEndian>) {
+    let debug_info = gimli::DebugInfo::<gimli::LittleEndian>::new(&sections.debug_info);
+    let debug_abbrev = gimli::DebugAbbrev::<gimli::LittleEndian>::new(&sections.debug_abbrev);
+    let mut units = debug_info.units();
+    while let Some(unit) = units.next().unwrap() {
+        let abbrevs = unit.abbreviations(debug_abbrev).unwrap();
+        let mut cursor = unit.entries(&abbrevs);
+        while cursor.next_dfs().unwrap().is_some() {
+            let entry = cursor.current().unwrap();
+            test::black_box(entry.tag());
+            let mut attrs = entry.attrs();
+            while let Some(attr) = attrs.next().unwrap() {
+                test::black_box(attr.name());
+                test::black_box(attr.value());
+            }
+        }
+    }
 }
 
 #[cfg(feature = "libdwarf")]
@@ -75,8 +100,7 @@ const DW_DLA_LIST: libdwarf::Dwarf_Unsigned = 0x0f;
 fn info_libdwarf(b: &mut test::Bencher) {
     b.iter(|| {
         let null = std::ptr::null_mut::<std::os::raw::c_void>();
-        let path = std::env::args_os().next().unwrap(); // Note: not constant
-        let file = std::fs::File::open(path).unwrap();
+        let file = std::fs::File::open(test_path()).unwrap();
 
         let fd = file.as_raw_fd();
         let access = 0; // DW_DLC_READ
@@ -203,8 +227,7 @@ fn info_libdwarf_attr(dbg: libdwarf::Dwarf_Debug, die: libdwarf::Dwarf_Die) {
 fn info_elfutils(b: &mut test::Bencher) {
     b.iter(|| {
         let null = std::ptr::null_mut::<std::os::raw::c_void>();
-        let path = std::env::args_os().next().unwrap(); // Note: not constant
-        let file = std::fs::File::open(path).unwrap();
+        let file = std::fs::File::open(test_path()).unwrap();
         let fd = file.as_raw_fd();
         let dwarf = unsafe {
             libdw::dwarf_begin(fd, libdw::Dwarf_Cmd::DWARF_C_READ)
@@ -299,9 +322,8 @@ unsafe extern "C" fn info_elfutils_attr(_: *mut libdw::Dwarf_Attribute, _: *mut 
 
 #[bench]
 fn line_rust_dwarf(b: &mut test::Bencher) {
+    let sections = dwarf::elf::load(test_path()).unwrap();
     b.iter(|| {
-        let path = std::env::args_os().next().unwrap(); // Note: not constant
-        let sections = dwarf::elf::load(path).unwrap();
         let mut r = &*sections.debug_line;
         let line_program = dwarf::line::LineProgram::read(&mut r, 0, sections.endian, 8, &[], &[]).unwrap();
         let mut lines = line_program.lines();
@@ -313,9 +335,8 @@ fn line_rust_dwarf(b: &mut test::Bencher) {
 
 #[bench]
 fn line_gimli(b: &mut test::Bencher) {
+    let sections = dwarf::elf::load(test_path()).unwrap();
     b.iter(|| {
-        let path = std::env::args_os().next().unwrap(); // Note: not constant
-        let sections = dwarf::elf::load(path).unwrap();
         let debug_line = gimli::DebugLine::<gimli::LittleEndian>::new(&sections.debug_line);
         let header = debug_line.header(gimli::DebugLineOffset(0), 8, None, None).unwrap();
         let mut rows = header.rows();
@@ -330,8 +351,7 @@ fn line_gimli(b: &mut test::Bencher) {
 fn line_libdwarf(b: &mut test::Bencher) {
     b.iter(|| {
         let null = std::ptr::null_mut::<std::os::raw::c_void>();
-        let path = std::env::args_os().next().unwrap(); // Note: not constant
-        let file = std::fs::File::open(path).unwrap();
+        let file = std::fs::File::open(test_path()).unwrap();
 
         let fd = file.as_raw_fd();
         let access = 0; // DW_DLC_READ
