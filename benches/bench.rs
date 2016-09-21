@@ -40,8 +40,8 @@ fn info_gimli(b: &mut test::Bencher) {
         let sections = dwarf::elf::load(path).unwrap();
         let debug_info = gimli::DebugInfo::<gimli::LittleEndian>::new(&sections.debug_info);
         let debug_abbrev = gimli::DebugAbbrev::<gimli::LittleEndian>::new(&sections.debug_abbrev);
-        for unit in debug_info.units() {
-            let unit = unit.unwrap();
+        let mut units = debug_info.units();
+        while let Some(unit) = units.next().unwrap() {
             let abbrevs = unit.abbreviations(debug_abbrev).unwrap();
             let mut cursor = unit.entries(&abbrevs);
             while cursor.next_dfs().unwrap().is_some() {
@@ -303,7 +303,7 @@ fn line_rust_dwarf(b: &mut test::Bencher) {
         let path = std::env::args_os().next().unwrap(); // Note: not constant
         let sections = dwarf::elf::load(path).unwrap();
         let mut r = &*sections.debug_line;
-        let line_program = dwarf::line::LineNumberProgram::read(&mut r, 0, sections.endian, 8).unwrap();
+        let line_program = dwarf::line::LineProgram::read(&mut r, 0, sections.endian, 8, &[], &[]).unwrap();
         let mut lines = line_program.lines();
         while let Some(line) = lines.next().unwrap() {
             test::black_box(line);
@@ -317,9 +317,9 @@ fn line_gimli(b: &mut test::Bencher) {
         let path = std::env::args_os().next().unwrap(); // Note: not constant
         let sections = dwarf::elf::load(path).unwrap();
         let debug_line = gimli::DebugLine::<gimli::LittleEndian>::new(&sections.debug_line);
-        let header = gimli::LineNumberProgramHeader::new(debug_line, gimli::DebugLineOffset(0), 8).unwrap();
-        let mut state_machine = gimli::StateMachine::new(&header);
-        while let Some(row) = state_machine.next_row().unwrap() {
+        let header = debug_line.header(gimli::DebugLineOffset(0), 8, None, None).unwrap();
+        let mut rows = header.rows();
+        while let Some(row) = rows.next_row().unwrap() {
             test::black_box(row);
         }
     });
